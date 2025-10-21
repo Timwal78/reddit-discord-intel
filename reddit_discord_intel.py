@@ -114,7 +114,8 @@ def send_embed_to_discord(title: str, url: str, subreddit: str):
         requests.post(DISCORD_WEBHOOK_URL, json=embed, timeout=10)
         print(f"✅ Sent: {title[:90]}...")
     except Exception as e:
-        print(f⚠️ Discord send error: {e}")
+        print(f"Discord send error: {e}")
+
 
 # -----------------------------
 # Reddit client
@@ -132,7 +133,8 @@ def make_reddit():
 # -----------------------------
 def main():
     if DISCORD_WEBHOOK_URL == "YOUR_DISCORD_WEBHOOK_URL":
-        print("⚠️ Set DISCORD_WEBHOOK_URL env var or inline constant before running.")
+        print("Set DISCORD_WEBHOOK_URL env var or inline constant before running.")
+
     reddit = make_reddit()
     seen = load_seen()
     print("🚀 BEASTMODE scanner online. Window: 4:00–20:00 ET, Sun–Fri.")
