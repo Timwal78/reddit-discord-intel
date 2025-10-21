@@ -1,0 +1,14 @@
+services:
+  - type: worker
+    name: reddit-discord-intel
+    env: python
+    plan: free
+    buildCommand: ""
+    startCommand: python reddit_discord_intel.py
+    envVars:
+      - key: REDDIT_CLIENT_ID
+        value: i_gdxTj8WF7a7e2zoUtxfQ
+      - key: REDDIT_CLIENT_SECRET
+        value: 0J14dAPQMS6lGVHIq1N10JZEQOobIg
+      - key: DISCORD_WEBHOOK_URL
+        value: https://canary.discord.com/api/webhooks/1425603461826875435/aQBVUMfvza2qjuMaOJhSS3zTuC7mwJsreTlr_TfkUlQLzHt2gmc_noGlGadRUvrqJjGm
