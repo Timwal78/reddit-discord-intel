@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""
-BEASTMODE Reddit-Discord Intelligence Bot
-Professional-grade monitoring system for stock market discussions
-"""
-
 import os
 import sys
 import time
@@ -11,77 +6,30 @@ import json
 import logging
 from datetime import datetime, time as dtime
 from zoneinfo import ZoneInfo
-from typing import Set
 import praw
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
-
-# Reddit API Credentials (from environment variables)
+# Configuration
 REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
-USER_AGENT = os.getenv("USER_AGENT", "BeastModeIntelBot/3.0")
-
-# Discord Webhook
+USER_AGENT = os.getenv("USER_AGENT", "BeastModeBot/3.0")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
-# Monitoring Configuration
-SUBREDDITS = [
-    "stocks",
-    "options", 
-    "options_trading",
-    "thetagang",
-    "investing",
-    "pennystocks",
-    "shortsqueeze",
-    "superstonk",
-    "trading",
-    "wallstreetbets"
-]
+SUBREDDITS = ["stocks", "options", "options_trading", "thetagang", "investing", "pennystocks", "shortsqueeze", "superstonk", "trading", "wallstreetbets"]
 
-KEYWORDS = [
-    # Tickers
-    "tsla", "spy", "iwm", "qqq", "amc", "gme", "nvda", "aapl", "msft",
-    "xlk", "arkk", "pltr", "sofi", "coin",
-    # Catalysts
-    "short squeeze", "gamma ramp", "gamma squeeze", "earnings beat",
-    "earnings miss", "breakout", "momentum", "volume spike",
-    "insider buying", "options flow", "unusual options activity",
-    "dark pool", "bullish flow", "bearish flow", "buyback",
-    "sec filing", "catalyst", "fda approval", "analyst upgrade",
-    "analyst downgrade", "price target", "ai stocks", "undervalued",
-    "reversal", "gap up", "gap down", "pre-market", "after hours",
-    "halt", "halted", "squeeze", "yolo", "calls", "puts"
-]
+KEYWORDS = ["tsla", "spy", "iwm", "qqq", "amc", "gme", "nvda", "aapl", "msft", "xlk", "arkk", "pltr", "sofi", "coin", "short squeeze", "gamma ramp", "gamma squeeze", "earnings beat", "earnings miss", "breakout", "momentum", "volume spike", "insider buying", "options flow", "unusual options activity", "dark pool", "bullish flow", "bearish flow", "buyback", "sec filing", "catalyst", "fda approval", "analyst upgrade", "analyst downgrade", "price target", "ai stocks", "undervalued", "reversal", "gap up", "gap down", "pre-market", "after hours", "halt", "halted", "squeeze", "yolo", "calls", "puts"]
 
 SCAN_INTERVAL_SEC = 180
 POSTS_PER_SUB = 15
 SEEN_FILE = "seen_posts.json"
 MAX_SEEN_POSTS = 10000
 TZ = ZoneInfo("America/New_York")
-
 ACTIVE_START_HOUR = 4
 ACTIVE_END_HOUR = 20
 ACTIVE_DAYS = {6, 0, 1, 2, 3, 4}
 
-# ============================================================================
-# LOGGING SETUP
-# ============================================================================
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[logging.StreamHandler(sys.stdout)])
 logger = logging.getLogger(__name__)
-
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
 
 def validate_config():
     missing = []
@@ -91,7 +39,6 @@ def validate_config():
         missing.append("REDDIT_CLIENT_SECRET")
     if not DISCORD_WEBHOOK_URL:
         missing.append("DISCORD_WEBHOOK_URL")
-    
     if missing:
         logger.error(f"Missing environment variables: {', '.join(missing)}")
         return False
@@ -101,12 +48,10 @@ def in_active_window():
     now = datetime.now(TZ)
     weekday = now.weekday()
     current_time = now.time()
-    
     active_day = weekday in ACTIVE_DAYS
     start_time = dtime(ACTIVE_START_HOUR, 0)
     end_time = dtime(ACTIVE_END_HOUR, 0)
     active_time = start_time <= current_time <= end_time
-    
     return active_day and active_time
 
 def seconds_until_next_window():
@@ -123,11 +68,9 @@ def load_seen_posts():
                 data = json.load(f)
                 seen = set(data)
                 logger.info(f"Loaded {len(seen)} previously seen posts")
-                
                 if len(seen) > MAX_SEEN_POSTS:
                     seen = set(list(seen)[-MAX_SEEN_POSTS:])
                     logger.info(f"Trimmed seen posts to {MAX_SEEN_POSTS}")
-                
                 return seen
         except Exception as e:
             logger.warning(f"Error loading seen posts: {e}")
@@ -142,26 +85,9 @@ def save_seen_posts(seen):
     except Exception as e:
         logger.error(f"Error saving seen posts: {e}")
 
-def create_requests_session():
-    session = requests.Session()
-    retry = Retry(
-        total=3,
-        backoff_factor=1,
-        status_forcelist=[429, 500, 502, 503, 504],
-    )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-    return session
-
-# ============================================================================
-# DISCORD FUNCTIONS
-# ============================================================================
-
-def send_discord_alert(title, url, subreddit, session):
+def send_discord_alert(title, url, subreddit):
     if len(title) > 200:
         title = title[:197] + "..."
-    
     embed = {
         "embeds": [{
             "title": "🚨 BEASTMODE ALERT",
@@ -169,26 +95,15 @@ def send_discord_alert(title, url, subreddit, session):
             "url": url,
             "color": 15158332,
             "fields": [
-                {
-                    "name": "📍 Subreddit",
-                    "value": f"r/{subreddit}",
-                    "inline": True
-                },
-                {
-                    "name": "🔗 Link",
-                    "value": f"[View Post]({url})",
-                    "inline": True
-                }
+                {"name": "📍 Subreddit", "value": f"r/{subreddit}", "inline": True},
+                {"name": "🔗 Link", "value": f"[View Post]({url})", "inline": True}
             ],
-            "footer": {
-                "text": f"⏰ {datetime.now(TZ).strftime('%Y-%m-%d %I:%M %p ET')}"
-            },
+            "footer": {"text": f"⏰ {datetime.now(TZ).strftime('%Y-%m-%d %I:%M %p ET')}"},
             "timestamp": datetime.utcnow().isoformat()
         }]
     }
-    
     try:
-        response = session.post(DISCORD_WEBHOOK_URL, json=embed, timeout=10)
+        response = requests.post(DISCORD_WEBHOOK_URL, json=embed, timeout=10)
         if response.status_code == 204:
             logger.info(f"✅ Alert sent: {title[:80]}")
             return True
@@ -198,10 +113,6 @@ def send_discord_alert(title, url, subreddit, session):
     except Exception as e:
         logger.error(f"Failed to send Discord alert: {e}")
         return False
-
-# ============================================================================
-# REDDIT FUNCTIONS
-# ============================================================================
 
 def create_reddit_client():
     try:
@@ -219,44 +130,29 @@ def create_reddit_client():
         logger.error(f"Failed to create Reddit client: {e}")
         raise
 
-def scan_subreddit(reddit, subreddit_name, seen, session):
+def scan_subreddit(reddit, subreddit_name, seen):
     alerts_sent = 0
-    
     try:
         subreddit = reddit.subreddit(subreddit_name)
-        
         for post in subreddit.new(limit=POSTS_PER_SUB):
             if post.id in seen:
                 continue
-            
             seen.add(post.id)
-            
             title = post.title or ""
             title_lower = title.lower()
-            
             matching_keywords = [k for k in KEYWORDS if k in title_lower]
-            
             if matching_keywords:
                 url = f"https://www.reddit.com{post.permalink}"
-                
-                if send_discord_alert(title, url, subreddit_name, session):
+                if send_discord_alert(title, url, subreddit_name):
                     alerts_sent += 1
-                
                 if alerts_sent >= 5:
                     logger.info("Rate limiting: max 5 alerts per subreddit per scan")
                     break
-                
                 time.sleep(0.5)
-        
         return alerts_sent
-        
     except Exception as e:
         logger.error(f"Error scanning r/{subreddit_name}: {e}")
         return 0
-
-# ============================================================================
-# MAIN LOOP
-# ============================================================================
 
 def main():
     logger.info("=" * 70)
@@ -274,12 +170,9 @@ def main():
     
     try:
         reddit = create_reddit_client()
-        session = create_requests_session()
         seen = load_seen_posts()
-        
         logger.info("✅ Initialization complete")
         logger.info("🔥 Bot is now ONLINE and monitoring...\n")
-        
     except Exception as e:
         logger.error(f"❌ Initialization failed: {e}")
         sys.exit(1)
@@ -304,7 +197,37 @@ def main():
             logger.info(f"{'='*70}")
             
             scan_alerts = 0
-            
             for sub in SUBREDDITS:
                 logger.info(f"Scanning r/{sub}...")
-                alerts = scan_subreddit(reddit, sub, seen, session)
+                alerts = scan_subreddit(reddit, sub, seen)
+                scan_alerts += alerts
+                time.sleep(2)
+            
+            save_seen_posts(seen)
+            total_alerts += scan_alerts
+            logger.info(f"\n{'='*70}")
+            if scan_alerts > 0:
+                logger.info(f"🔥 Scan complete: {scan_alerts} alert(s) sent!")
+            else:
+                logger.info(f"✓ Scan complete: No new alerts")
+            logger.info(f"📊 Total alerts today: {total_alerts}")
+            logger.info(f"💾 Tracking {len(seen)} seen posts")
+            logger.info(f"⏳ Next scan in {SCAN_INTERVAL_SEC//60} minutes...")
+            logger.info(f"{'='*70}\n")
+            time.sleep(SCAN_INTERVAL_SEC)
+        except KeyboardInterrupt:
+            logger.info("\n\n👋 Bot stopped by user. Shutting down gracefully...")
+            save_seen_posts(seen)
+            break
+        except Exception as e:
+            logger.error(f"💥 Unexpected error in main loop: {e}")
+            logger.info("⚠️ Attempting to recover in 60 seconds...")
+            time.sleep(60)
+            try:
+                reddit = create_reddit_client()
+                logger.info("✅ Reddit client reconnected")
+            except:
+                logger.error("❌ Failed to reconnect to Reddit")
+
+if __name__ == "__main__":
+    main()
