@@ -1,176 +1,310 @@
-# ========================= BEASTMODE ALERTS =========================
-# Reddit → Discord intel bot (v2)
-# - Active window: 4:00–20:00 America/New_York, Sun–Fri
-# - Duplicate-proof via seen_posts.json
-# - 5-minute scan cadence
-# - Render-ready (uses env vars), falls back to constants
-# ====================================================================
+#!/usr/bin/env python3
+"""
+BEASTMODE Reddit-Discord Intelligence Bot
+Professional-grade monitoring system for stock market discussions
+"""
 
-import os, json, time, requests, praw
+import os
+import sys
+import time
+import json
+import logging
 from datetime import datetime, time as dtime
-try:
-    from zoneinfo import ZoneInfo  # Py3.9+
-except ImportError:
-    from backports.zoneinfo import ZoneInfo  # if running older Python locally
+from zoneinfo import ZoneInfo
+from typing import Set
+import praw
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
-# -----------------------------
-# CONFIG — credentials
-# Prefer ENV (Render), fallback to inline constants if present.
-# -----------------------------
-REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID", "i_gdxTj8WF7a7e2zoUtxfQ")
-REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET", "0J14dAPQMS6lGVHIq1N10JZEQOobIg")
-DISCORD_WEBHOOK_URL  = os.getenv("https://canary.discord.com/api/webhooks/1425603461826875435/aQBVUMfvza2qjuMaOJhSS3zTuC7mwJsreTlr_TfkUlQLzHt2gmc_noGlGadRUvrqJjGm", "YOUR_DISCORD_WEBHOOK_URL")
-USER_AGENT           = os.getenv("USER_AGENT", "AIMe_DiscordIntelBot/2.0 BEASTMODE")
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
-# -----------------------------
-# CONFIG — scanning
-# -----------------------------
+# Reddit API Credentials (from environment variables)
+REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
+REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
+USER_AGENT = os.getenv("USER_AGENT", "BeastModeIntelBot/3.0")
+
+# Discord Webhook
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+
+# Monitoring Configuration
 SUBREDDITS = [
     "stocks",
-    "options",
-    "options_trading",   # extra options community
-    "thetagang",         # options crowd
+    "options", 
+    "options_trading",
+    "thetagang",
     "investing",
     "pennystocks",
     "shortsqueeze",
     "superstonk",
     "trading",
+    "wallstreetbets"
 ]
 
 KEYWORDS = [
-    # Core tickers / ETFs
-    "tsla", "spy", "iwm", "qqq", "amc", "gme", "gme/w", "xlk",
-    # Catalysts / flow
-    "short squeeze", "gamma ramp", "earnings", "breakout",
-    "momentum", "volume spike", "insider buying", "options flow",
-    "unusual options activity", "bullish flow", "buyback",
+    # Tickers
+    "tsla", "spy", "iwm", "qqq", "amc", "gme", "nvda", "aapl", "msft",
+    "xlk", "arkk", "pltr", "sofi", "coin",
+    # Catalysts
+    "short squeeze", "gamma ramp", "gamma squeeze", "earnings beat",
+    "earnings miss", "breakout", "momentum", "volume spike",
+    "insider buying", "options flow", "unusual options activity",
+    "dark pool", "bullish flow", "bearish flow", "buyback",
     "sec filing", "catalyst", "fda approval", "analyst upgrade",
-    "ai stocks", "undervalued", "reversal", "gap up"
+    "analyst downgrade", "price target", "ai stocks", "undervalued",
+    "reversal", "gap up", "gap down", "pre-market", "after hours",
+    "halt", "halted", "squeeze", "yolo", "calls", "puts"
 ]
 
-SCAN_INTERVAL_SEC = 300  # 5 minutes
+SCAN_INTERVAL_SEC = 180
+POSTS_PER_SUB = 15
 SEEN_FILE = "seen_posts.json"
+MAX_SEEN_POSTS = 10000
 TZ = ZoneInfo("America/New_York")
 
-# -----------------------------
-# Helpers — time window control
-# -----------------------------
-def in_active_window_now() -> bool:
-    """Active Sun–Fri, 04:00–20:00 ET. Saturday off."""
+ACTIVE_START_HOUR = 4
+ACTIVE_END_HOUR = 20
+ACTIVE_DAYS = {6, 0, 1, 2, 3, 4}
+
+# ============================================================================
+# LOGGING SETUP
+# ============================================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def validate_config():
+    missing = []
+    if not REDDIT_CLIENT_ID:
+        missing.append("REDDIT_CLIENT_ID")
+    if not REDDIT_CLIENT_SECRET:
+        missing.append("REDDIT_CLIENT_SECRET")
+    if not DISCORD_WEBHOOK_URL:
+        missing.append("DISCORD_WEBHOOK_URL")
+    
+    if missing:
+        logger.error(f"Missing environment variables: {', '.join(missing)}")
+        return False
+    return True
+
+def in_active_window():
     now = datetime.now(TZ)
-    wd = now.weekday()  # Mon=0 ... Sun=6
-    # Active days: Sun(6) and Mon–Fri(0–4). Saturday (5) is off.
-    active_day = wd in {6, 0, 1, 2, 3, 4}
-    start = dtime(4, 0)   # 04:00
-    end   = dtime(20, 0)  # 20:00
-    active_time = start <= now.time() <= end
+    weekday = now.weekday()
+    current_time = now.time()
+    
+    active_day = weekday in ACTIVE_DAYS
+    start_time = dtime(ACTIVE_START_HOUR, 0)
+    end_time = dtime(ACTIVE_END_HOUR, 0)
+    active_time = start_time <= current_time <= end_time
+    
     return active_day and active_time
 
-def seconds_until_next_window() -> int:
-    """Rough sleep guidance when outside window (wake up to check again)."""
+def seconds_until_next_window():
     now = datetime.now(TZ)
-    # If before 4am on an active day → wait until 4am today
-    start_today = datetime(now.year, now.month, now.day, 4, 0, tzinfo=TZ)
-    if now <= start_today and datetime.now(TZ).weekday() in {6, 0, 1, 2, 3, 4}:
+    start_today = datetime(now.year, now.month, now.day, ACTIVE_START_HOUR, 0, tzinfo=TZ)
+    if now < start_today and now.weekday() in ACTIVE_DAYS:
         return max(60, int((start_today - now).total_seconds()))
-    # Else sleep a conservative chunk (15 min), we'll re-check window on wake
-    return 900
+    return 1800
 
-# -----------------------------
-# Seen-post persistence
-# -----------------------------
-def load_seen():
+def load_seen_posts():
     if os.path.exists(SEEN_FILE):
         try:
             with open(SEEN_FILE, "r") as f:
-                return set(json.load(f))
-        except Exception:
+                data = json.load(f)
+                seen = set(data)
+                logger.info(f"Loaded {len(seen)} previously seen posts")
+                
+                if len(seen) > MAX_SEEN_POSTS:
+                    seen = set(list(seen)[-MAX_SEEN_POSTS:])
+                    logger.info(f"Trimmed seen posts to {MAX_SEEN_POSTS}")
+                
+                return seen
+        except Exception as e:
+            logger.warning(f"Error loading seen posts: {e}")
             return set()
     return set()
 
-def save_seen(ids):
+def save_seen_posts(seen):
     try:
+        recent_posts = list(seen)[-MAX_SEEN_POSTS:]
         with open(SEEN_FILE, "w") as f:
-            json.dump(list(ids), f)
-    except Exception:
-        pass
+            json.dump(recent_posts, f)
+    except Exception as e:
+        logger.error(f"Error saving seen posts: {e}")
 
-# -----------------------------
-# Discord sender
-# -----------------------------
-def send_embed_to_discord(title: str, url: str, subreddit: str):
+def create_requests_session():
+    session = requests.Session()
+    retry = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504],
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
+# ============================================================================
+# DISCORD FUNCTIONS
+# ============================================================================
+
+def send_discord_alert(title, url, subreddit, session):
+    if len(title) > 200:
+        title = title[:197] + "..."
+    
     embed = {
         "embeds": [{
-            "title": f"📢 BEASTMODE ALERTS",
-            "description": f"**{title}**\n\n• Subreddit: **r/{subreddit}**",
+            "title": "🚨 BEASTMODE ALERT",
+            "description": f"**{title}**",
             "url": url,
-            "color": 16711680,  # red-ish
+            "color": 15158332,
+            "fields": [
+                {
+                    "name": "📍 Subreddit",
+                    "value": f"r/{subreddit}",
+                    "inline": True
+                },
+                {
+                    "name": "🔗 Link",
+                    "value": f"[View Post]({url})",
+                    "inline": True
+                }
+            ],
             "footer": {
-                "text": datetime.now(TZ).strftime("⏰ %Y-%m-%d %I:%M %p ET")
-            }
+                "text": f"⏰ {datetime.now(TZ).strftime('%Y-%m-%d %I:%M %p ET')}"
+            },
+            "timestamp": datetime.utcnow().isoformat()
         }]
     }
+    
     try:
-        requests.post(DISCORD_WEBHOOK_URL, json=embed, timeout=10)
-        print(f"✅ Sent: {title[:90]}...")
+        response = session.post(DISCORD_WEBHOOK_URL, json=embed, timeout=10)
+        if response.status_code == 204:
+            logger.info(f"✅ Alert sent: {title[:80]}")
+            return True
+        else:
+            logger.warning(f"Discord webhook returned status {response.status_code}")
+            return False
     except Exception as e:
-        print(f"Discord send error: {e}")
+        logger.error(f"Failed to send Discord alert: {e}")
+        return False
 
+# ============================================================================
+# REDDIT FUNCTIONS
+# ============================================================================
 
-# -----------------------------
-# Reddit client
-# -----------------------------
-def make_reddit():
-    return praw.Reddit(
-        client_id=REDDIT_CLIENT_ID,
-        client_secret=REDDIT_CLIENT_SECRET,
-        user_agent=USER_AGENT,
-        # PRAW will use read-only mode by default with client creds
-    )
+def create_reddit_client():
+    try:
+        reddit = praw.Reddit(
+            client_id=REDDIT_CLIENT_ID,
+            client_secret=REDDIT_CLIENT_SECRET,
+            user_agent=USER_AGENT,
+            check_for_updates=False,
+            timeout=30
+        )
+        reddit.user.me()
+        logger.info("✅ Reddit client authenticated successfully")
+        return reddit
+    except Exception as e:
+        logger.error(f"Failed to create Reddit client: {e}")
+        raise
 
-# -----------------------------
-# Main scanning loop
-# -----------------------------
+def scan_subreddit(reddit, subreddit_name, seen, session):
+    alerts_sent = 0
+    
+    try:
+        subreddit = reddit.subreddit(subreddit_name)
+        
+        for post in subreddit.new(limit=POSTS_PER_SUB):
+            if post.id in seen:
+                continue
+            
+            seen.add(post.id)
+            
+            title = post.title or ""
+            title_lower = title.lower()
+            
+            matching_keywords = [k for k in KEYWORDS if k in title_lower]
+            
+            if matching_keywords:
+                url = f"https://www.reddit.com{post.permalink}"
+                
+                if send_discord_alert(title, url, subreddit_name, session):
+                    alerts_sent += 1
+                
+                if alerts_sent >= 5:
+                    logger.info("Rate limiting: max 5 alerts per subreddit per scan")
+                    break
+                
+                time.sleep(0.5)
+        
+        return alerts_sent
+        
+    except Exception as e:
+        logger.error(f"Error scanning r/{subreddit_name}: {e}")
+        return 0
+
+# ============================================================================
+# MAIN LOOP
+# ============================================================================
+
 def main():
-    if DISCORD_WEBHOOK_URL == "YOUR_DISCORD_WEBHOOK_URL":
-        print("Set DISCORD_WEBHOOK_URL env var or inline constant before running.")
-
-    reddit = make_reddit()
-    seen = load_seen()
-    print("🚀 BEASTMODE scanner online. Window: 4:00–20:00 ET, Sun–Fri.")
-
+    logger.info("=" * 70)
+    logger.info("🚀 BEASTMODE REDDIT-DISCORD INTELLIGENCE BOT v3.0")
+    logger.info("=" * 70)
+    logger.info(f"Active Window: {ACTIVE_START_HOUR}:00 - {ACTIVE_END_HOUR}:00 ET (Sun-Fri)")
+    logger.info(f"Scan Interval: {SCAN_INTERVAL_SEC} seconds ({SCAN_INTERVAL_SEC//60} minutes)")
+    logger.info(f"Monitoring: {len(SUBREDDITS)} subreddits")
+    logger.info(f"Tracking: {len(KEYWORDS)} keywords")
+    logger.info("=" * 70)
+    
+    if not validate_config():
+        logger.error("❌ Configuration validation failed. Exiting.")
+        sys.exit(1)
+    
+    try:
+        reddit = create_reddit_client()
+        session = create_requests_session()
+        seen = load_seen_posts()
+        
+        logger.info("✅ Initialization complete")
+        logger.info("🔥 Bot is now ONLINE and monitoring...\n")
+        
+    except Exception as e:
+        logger.error(f"❌ Initialization failed: {e}")
+        sys.exit(1)
+    
+    scan_count = 0
+    total_alerts = 0
+    
     while True:
         try:
-            if not in_active_window_now():
-                print("💤 Outside active window — sleeping until next window check...")
-                time.sleep(seconds_until_next_window())
+            if not in_active_window():
+                now_str = datetime.now(TZ).strftime("%I:%M %p ET on %A")
+                logger.info(f"💤 Outside active window (current: {now_str})")
+                sleep_time = seconds_until_next_window()
+                logger.info(f"Sleeping for {sleep_time//60} minutes...")
+                time.sleep(sleep_time)
                 continue
-
+            
+            scan_count += 1
+            scan_time = datetime.now(TZ).strftime("%I:%M %p ET")
+            logger.info(f"\n{'='*70}")
+            logger.info(f"🔍 SCAN #{scan_count} - {scan_time}")
+            logger.info(f"{'='*70}")
+            
+            scan_alerts = 0
+            
             for sub in SUBREDDITS:
-                print(f"🔎 Scanning r/{sub} ...")
-                subreddit = reddit.subreddit(sub)
-                for post in subreddit.new(limit=8):
-                    if post.id in seen:
-                        continue
-                    title = post.title or ""
-                    lower = title.lower()
-                    if any(k in lower for k in KEYWORDS):
-                        url = f"https://www.reddit.com{post.permalink}"
-                        send_embed_to_discord(title, url, sub)
-                    seen.add(post.id)
-            save_seen(seen)
-
-            print(f"⏳ Sleeping {SCAN_INTERVAL_SEC//60} min...")
-            time.sleep(SCAN_INTERVAL_SEC)
-
-        except Exception as e:
-            print(f"💥 Error: {e} — retrying in 60s")
-            time.sleep(60)
-
-# -----------------------------
-if __name__ == "__main__":
-    main()
-
-
-
-
+                logger.info(f"Scanning r/{sub}...")
+                alerts = scan_subreddit(reddit, sub, seen, session)
