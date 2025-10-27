@@ -17,16 +17,33 @@ DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
 SUBREDDITS = ["stocks", "options", "options_trading", "thetagang", "investing", "pennystocks", "shortsqueeze", "superstonk", "trading", "wallstreetbets"]
 
-KEYWORDS = ["tsla", "spy", "iwm", "qqq", "amc", "gme", "nvda", "aapl", "msft", "xlk", "arkk", "pltr", "sofi", "coin", "short squeeze", "gamma ramp", "gamma squeeze", "earnings beat", "earnings miss", "breakout", "momentum", "volume spike", "insider buying", "options flow", "unusual options activity", "dark pool", "bullish flow", "bearish flow", "buyback", "sec filing", "catalyst", "fda approval", "analyst upgrade", "analyst downgrade", "price target", "ai stocks", "undervalued", "reversal", "gap up", "gap down", "pre-market", "after hours", "halt", "halted", "squeeze", "yolo", "calls", "puts"]
+# EXPANDED KEYWORDS - More tickers and terms!
+KEYWORDS = [
+    # Popular tickers
+    "tsla", "spy", "iwm", "qqq", "amc", "gme", "nvda", "aapl", "msft", "xlk", "arkk", "pltr", "sofi", "coin",
+    "meta", "amzn", "googl", "nflx", "ba", "dis", "baba", "nio", "lucid", "rivn", "f", "gm",
+    "uber", "lyft", "snap", "hood", "shop", "sq", "pypl", "crm", "adbe", "orcl",
+    "mu", "intc", "qcom", "mrna", "pfe", "jnj", "xom", "cvx", "mro", "oxy",
+    # Squeeze/momentum terms
+    "short squeeze", "gamma ramp", "gamma squeeze", "breakout", "momentum", "volume spike",
+    "insider buying", "options flow", "unusual options activity", "dark pool", 
+    "bullish flow", "bearish flow", "buyback", "squeeze", "yolo", "calls", "puts",
+    # Catalyst terms
+    "earnings beat", "earnings miss", "sec filing", "catalyst", "fda approval",
+    "analyst upgrade", "analyst downgrade", "price target", "reversal",
+    "gap up", "gap down", "pre-market", "after hours", "halt", "halted",
+    # General interest
+    "ai stocks", "undervalued", "oversold", "overbought", "moon", "rocket"
+]
 
-SCAN_INTERVAL_SEC = 180
-POSTS_PER_SUB = 15
+SCAN_INTERVAL_SEC = 180  # 3 minutes
+POSTS_PER_SUB = 50  # INCREASED from 15 to 50!
 SEEN_FILE = "seen_posts.json"
 MAX_SEEN_POSTS = 10000
 TZ = ZoneInfo("America/New_York")
 ACTIVE_START_HOUR = 4
 ACTIVE_END_HOUR = 20
-ACTIVE_DAYS = {6, 0, 1, 2, 3, 4}
+ACTIVE_DAYS = {6, 0, 1, 2, 3, 4}  # Sunday through Friday
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[logging.StreamHandler(sys.stdout)])
 logger = logging.getLogger(__name__)
@@ -145,9 +162,7 @@ def scan_subreddit(reddit, subreddit_name, seen):
                 url = f"https://www.reddit.com{post.permalink}"
                 if send_discord_alert(title, url, subreddit_name):
                     alerts_sent += 1
-                if alerts_sent >= 5:
-                    logger.info("Rate limiting: max 5 alerts per subreddit per scan")
-                    break
+                # REMOVED THE 5-ALERT LIMIT! Send all alerts found!
                 time.sleep(0.5)
         return alerts_sent
     except Exception as e:
@@ -156,12 +171,14 @@ def scan_subreddit(reddit, subreddit_name, seen):
 
 def main():
     logger.info("=" * 70)
-    logger.info("🚀 BEASTMODE REDDIT-DISCORD INTELLIGENCE BOT v3.0")
+    logger.info("🚀 BEASTMODE REDDIT-DISCORD INTELLIGENCE BOT v3.0 (LOOSENED)")
     logger.info("=" * 70)
     logger.info(f"Active Window: {ACTIVE_START_HOUR}:00 - {ACTIVE_END_HOUR}:00 ET (Sun-Fri)")
     logger.info(f"Scan Interval: {SCAN_INTERVAL_SEC} seconds ({SCAN_INTERVAL_SEC//60} minutes)")
     logger.info(f"Monitoring: {len(SUBREDDITS)} subreddits")
     logger.info(f"Tracking: {len(KEYWORDS)} keywords")
+    logger.info(f"Posts per subreddit: {POSTS_PER_SUB} (INCREASED!)")
+    logger.info(f"Alert limit: REMOVED (sends all matches!)")
     logger.info("=" * 70)
     
     if not validate_config():
