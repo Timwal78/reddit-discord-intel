@@ -163,7 +163,7 @@ def scan_subreddit(reddit, subreddit_name, seen):
                 if send_discord_alert(title, url, subreddit_name):
                     alerts_sent += 1
                 # REMOVED THE 5-ALERT LIMIT! Send all alerts found!
-                time.sleep(0.5)
+                time.sleep(2.5)
         return alerts_sent
     except Exception as e:
         logger.error(f"Error scanning r/{subreddit_name}: {e}")
