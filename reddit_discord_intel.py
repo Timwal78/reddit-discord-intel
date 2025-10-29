@@ -37,12 +37,12 @@ KEYWORDS = [
 ]
 
 SCAN_INTERVAL_SEC = 180  # 3 minutes
-POSTS_PER_SUB = 50  # INCREASED from 50 to 150!
+POSTS_PER_SUB = 150  # INCREASED from 50 to 150!
 SEEN_FILE = "seen_posts.json"
 MAX_SEEN_POSTS = 10000
 TZ = ZoneInfo("America/New_York")
-ACTIVE_START_HOUR = 8
-ACTIVE_END_HOUR = 5
+ACTIVE_START_HOUR = 4
+ACTIVE_END_HOUR = 20
 ACTIVE_DAYS = {6, 0, 1, 2, 3, 4}  # Sunday through Friday
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[logging.StreamHandler(sys.stdout)])
