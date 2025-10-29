@@ -37,7 +37,7 @@ KEYWORDS = [
 ]
 
 SCAN_INTERVAL_SEC = 180  # 3 minutes
-POSTS_PER_SUB = 150  # INCREASED from 50 to 150!
+POSTS_PER_SUB = 25  # INCREASED from 150 to 25!
 SEEN_FILE = "seen_posts.json"
 MAX_SEEN_POSTS = 10000
 TZ = ZoneInfo("America/New_York")
