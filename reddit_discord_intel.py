@@ -36,7 +36,7 @@ KEYWORDS = [
     "ai stocks", "undervalued", "oversold", "overbought", "moon", "rocket", "powerhour", 
 ]
 
-SCAN_INTERVAL_SEC = 180  # 3 minutes
+SCAN_INTERVAL_SEC = 900  # 15 minutes
 POSTS_PER_SUB = 25  # INCREASED from 150 to 25!
 SEEN_FILE = "seen_posts.json"
 MAX_SEEN_POSTS = 10000
