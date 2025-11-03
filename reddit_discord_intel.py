@@ -15,7 +15,7 @@ REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
 USER_AGENT = os.getenv("USER_AGENT", "BeastModeBot/3.0")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
-SUBREDDITS = ["stocks", "options", "options_trading", "thetagang", "investing", "pennystocks", "shortsqueeze", "superstonk", "trading", "wallstreetbets"]
+SUBREDDITS = ["stocks", "options", "options_trading", "thetagang","shortsqueeze", "superstonk", "trading", "wallstreetbets"]
 
 # EXPANDED KEYWORDS - More tickers and terms!
 KEYWORDS = [
@@ -33,7 +33,7 @@ KEYWORDS = [
     "analyst upgrade", "analyst downgrade", "price target", "reversal",
     "gap up", "gap down", "pre-market", "after hours", "halt", "halted",
     # General interest
-    "ai stocks", "undervalued", "oversold", "overbought", "moon", "rocket"
+    "ai stocks", "undervalued", "oversold", "overbought", "moon", "rocket", "powerhour", 
 ]
 
 SCAN_INTERVAL_SEC = 180  # 3 minutes
