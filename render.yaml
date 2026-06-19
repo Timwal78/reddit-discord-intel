@@ -7,8 +7,8 @@ services:
     startCommand: python reddit_discord_intel.py
     envVars:
       - key: REDDIT_CLIENT_ID
-        value: CKwgWBWUg5qqY5mWeYYcg
+        sync: false
       - key: REDDIT_CLIENT_SECRET
-        value: Fqudug9vshxAErQWIrkHd0edy01Eww
+        sync: false
       - key: DISCORD_WEBHOOK_URL
-        value: https://discord.com/api/webhooks/1425603461826875435/aQBVUMfvza2qjuMaOJhSS3zTuC7mwJsreTlr_TfkUlQLzHt2gmc_noGlGadRUvrqJjGm
+        sync: false
