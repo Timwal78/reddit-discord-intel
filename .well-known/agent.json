@@ -1,0 +1,13 @@
+{
+  "name": "reddit-discord-intel",
+  "description": "Reddit and Discord intelligence aggregator for retail sentiment",
+  "owner": "ScriptMasterLabs",
+  "github": "https://github.com/timwal78/reddit-discord-intel",
+  "contact": "scriptmasterlabs@gmail.com",
+  "sovereign": {
+    "noMockData": true,
+    "liveDataOnly": true,
+    "noTelemetry": true,
+    "enforcedBy": ".github/workflows/sovereign-data-check.yml"
+  }
+}
